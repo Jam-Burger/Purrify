@@ -1,15 +1,10 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:http/http.dart' as http;
 import 'package:purrify/components/text_field.dart';
+import 'package:purrify/config.dart';
+import 'package:purrify/pages/home_page.dart';
 import 'package:purrify/utilities/functions.dart';
-import 'package:purrify/utilities/routes.dart';
-import 'package:url_launcher/url_launcher.dart';
-
-const String clientId = '6479d965a2d2426abcb83dbed9bff155';
-const String redirectUri = 'https://github.com/Jam-Burger/Purrify';
+import 'package:webview_flutter/webview_flutter.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -20,6 +15,7 @@ class LoginPage extends StatefulWidget {
 
 class _LoginPageState extends State<LoginPage> {
   late final TextEditingController _email, _password;
+  late final WebViewController _controller;
   static const List<String> scopes = [
     'user-read-private',
     'playlist-read-private'
@@ -30,6 +26,21 @@ class _LoginPageState extends State<LoginPage> {
     super.initState();
     _email = TextEditingController();
     _password = TextEditingController();
+    _controller = WebViewController()
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onUrlChange: (UrlChange change) {
+            String authorizationCode =
+                Uri.parse(change.url ?? '').queryParameters['code'] ?? '';
+            Navigator.of(context).pushAndRemoveUntil(
+              MaterialPageRoute(
+                  builder: (context) =>
+                      HomePage(authorizationCode: authorizationCode)),
+              (route) => false,
+            );
+          },
+        ),
+      );
   }
 
   @override
@@ -40,28 +51,50 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   Future<void> _login() async {
-    final String email = _email.text;
-    final String password = _password.text;
-    await authenticateWithSpotify();
+    // await SpotifySdk.connectToSpotifyRemote(
+    //     clientId: clientId, redirectUrl: redirectUrl);
+    await authenticateAndRedirect();
   }
 
-  Future<void> authenticateWithSpotify() async {
+  Future<void> authenticateAndRedirect() async {
     final authorizationUrl = Uri.https(
       'accounts.spotify.com',
       '/authorize',
       <String, String>{
         'client_id': clientId,
         'response_type': 'code',
-        'redirect_uri': "url",
+        'redirect_uri': redirectUrl,
         'scope': scopes.join(' '),
       },
     );
+
     log(authorizationUrl.toString());
-    if (await canLaunchUrl(authorizationUrl)) {
-      await launchUrl(authorizationUrl);
-      if (mounted) {
-        Navigator.pushNamed(context, homeRoute);
-      }
+    await _controller.clearCache();
+    await _controller.loadRequest(authorizationUrl);
+
+    Dialog dialog = Dialog(
+      surfaceTintColor: Colors.black87,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10.0)),
+      child: const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(width: 20),
+            Text("Loading"),
+          ],
+        ),
+      ),
+    );
+    if (mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (BuildContext context) {
+          return dialog;
+        },
+      );
     }
   }
 
@@ -108,77 +141,6 @@ class _LoginPageState extends State<LoginPage> {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-class RedirectPage extends StatefulWidget {
-  final Uri redirectUri;
-
-  const RedirectPage({super.key, required this.redirectUri});
-
-  @override
-  State<RedirectPage> createState() => _RedirectPageState();
-}
-
-class _RedirectPageState extends State<RedirectPage> {
-  @override
-  void initState() {
-    super.initState();
-    handleAuthorization();
-  }
-
-  Future<String> requestAccessToken(String authorizationCode) async {
-    final tokenUrl = Uri.https('accounts.spotify.com', '/api/token');
-
-    final response = await http.post(
-      tokenUrl,
-      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-      body: {
-        'grant_type': 'authorization_code',
-        'code': authorizationCode,
-        'redirect_uri': redirectUri,
-        'client_id': clientId,
-        'client_secret': 'a6a7b6ab7e6446c4a4a2da53ca5d8db6',
-      },
-    );
-
-    if (response.statusCode == 200) {
-      final accessToken = jsonDecode(response.body)['access_token'];
-      return accessToken;
-    } else {
-      throw 'Failed to obtain access token.';
-    }
-  }
-
-  Future<void> handleAuthorization() async {
-    final authorizationCode = widget.redirectUri.queryParameters['code'];
-
-    if (authorizationCode != null) {
-      try {
-        final accessToken = await requestAccessToken(authorizationCode);
-        // Use the access token for further API requests
-        print('Access Token: $accessToken');
-      } catch (e) {
-        print('Authorization Error: $e');
-      }
-    } else {
-      print('Authorization code is missing.');
-    }
-
-    // Close the redirect page
-    if (mounted) Navigator.of(context).pop();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Redirecting...'),
-      ),
-      body: const Center(
-        child: CircularProgressIndicator(),
       ),
     );
   }

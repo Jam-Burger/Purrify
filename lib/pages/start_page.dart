@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:purrify/utilities/routes.dart';
+import 'package:purrify/pages/login_page.dart';
 
 class StartPage extends StatelessWidget {
   const StartPage({super.key});
@@ -16,8 +16,8 @@ class StartPage extends StatelessWidget {
     await Future.delayed(
       const Duration(seconds: 1),
       () => {
-        Navigator.of(context).pushNamedAndRemoveUntil(
-          loginRoute,
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => const LoginPage()),
           (route) => false,
         )
       },

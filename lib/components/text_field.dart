@@ -2,21 +2,24 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class TextFieldTemplate extends StatelessWidget {
-  final TextEditingController controller;
-  final String hintText;
-  final void Function(String)? onChanged;
-  final bool isPassword;
+  final TextEditingController _controller;
+  final String _hintText;
+  final void Function(String)? _onChanged;
+  final bool _isPassword;
 
   const TextFieldTemplate({
     super.key,
-    required this.controller,
-    this.hintText = "",
-    this.onChanged,
-    this.isPassword = false,
-  });
+    required TextEditingController controller,
+    String hintText = "",
+    void Function(String)? onChanged,
+    bool isPassword = false,
+  })  : _onChanged = onChanged,
+        _isPassword = isPassword,
+        _hintText = hintText,
+        _controller = controller;
 
-  void _onChanged(String text) {
-    if (onChanged != null) onChanged!(text);
+  void _onChangedText(String text) {
+    if (_onChanged != null) _onChanged!(text);
   }
 
   @override
@@ -24,9 +27,9 @@ class TextFieldTemplate extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 5),
       child: TextField(
-        onChanged: _onChanged,
-        obscureText: isPassword,
-        controller: controller,
+        onChanged: _onChangedText,
+        obscureText: _isPassword,
+        controller: _controller,
         decoration: InputDecoration(
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(25),
@@ -34,7 +37,7 @@ class TextFieldTemplate extends StatelessWidget {
           hoverColor: Colors.black,
           filled: false,
           fillColor: Colors.white10,
-          hintText: hintText,
+          hintText: _hintText,
           hintStyle: GoogleFonts.arimo(
             fontWeight: FontWeight.w500,
           ),

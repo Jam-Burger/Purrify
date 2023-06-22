@@ -1,9 +1,11 @@
 import 'dart:developer' as devtools;
+
 import 'package:flutter/material.dart';
 
-void log(String message){
-  devtools.log(message);
+void log(String? message) {
+  devtools.log(message ?? 'null');
 }
+
 void showSnackBar({required context, required message, duration = 2}) {
   ScaffoldMessenger.of(context).showSnackBar(SnackBar(
     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
