@@ -9,8 +9,15 @@ class Image {
         json['width'] as int,
         json['height'] as int,
       );
+
+  Uri get url => _url;
+
   @override
   String toString() {
     return '\nurl: $_url\nwidth: $_width\nheight: $_height\n';
   }
+
+  int get width => _width;
+
+  get height => _height;
 }

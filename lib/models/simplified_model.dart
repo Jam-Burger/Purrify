@@ -15,8 +15,18 @@ class SimplifiedModel {
         Uri.parse(json['href'] as String),
       );
 
+  String get id => _id;
+
   @override
   String toString() {
     return '\nid: $_id\nname: $_name\nuri: $_uri\nexternal url: $_externalUrl\nhref: $_href\n';
   }
+
+  get name => _name;
+
+  get href => _href;
+
+  Uri get externalUrl => _externalUrl;
+
+  get uri => _uri;
 }

@@ -9,6 +9,8 @@ class Album {
   List<Image> _images;
   DateTime _releaseDate;
   List<SimplifiedModel> _artists;
+
+  List<SimplifiedModel> get artists => _artists;
   List<SimplifiedModel> _tracks;
 
   Album(
@@ -43,12 +45,10 @@ class Album {
         (json['artists'] as List<dynamic>)
             .map((e) => SimplifiedModel.fromJson(e as Map<String, dynamic>))
             .toList(),
-        ((json['tracks'] as Map<String, dynamic>)['items'] as List<dynamic>)
+        ((json['tracks'] as Map<String, dynamic>)['items'])
             .map((e) => SimplifiedModel.fromJson(e as Map<String, dynamic>))
             .toList(),
       );
-
-  List<SimplifiedModel> get artists => _artists;
 
   DateTime get releaseDate => _releaseDate;
 

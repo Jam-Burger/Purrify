@@ -7,7 +7,7 @@ class AccessTokenManager {
 
   static Future<String> getToken() async {
     if (_accessToken.isEmpty ||
-        DateTime.now().difference(_lastRefreshTime).inMinutes >= 50) {
+        DateTime.now().difference(_lastRefreshTime).inHours >= 1) {
       _accessToken = await SpotifySdk.getAccessToken(
         clientId: clientId,
         redirectUrl: redirectUrl,

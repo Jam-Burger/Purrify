@@ -3,8 +3,10 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart';
+import 'package:purrify/components/list_item_adapter.dart';
 import 'package:purrify/config.dart';
 import 'package:purrify/models/artist.dart';
+import 'package:purrify/models/list_item.dart';
 import 'package:purrify/utilities/access_token_manager.dart';
 import 'package:purrify/utilities/functions.dart';
 import 'package:spotify_sdk/spotify_sdk.dart';
@@ -18,6 +20,7 @@ class ExperimentsPage extends StatefulWidget {
 
 class _ExperimentsPageState extends State<ExperimentsPage> {
   String _bodyText = '';
+  Widget? holder;
 
   @override
   Widget build(BuildContext context) {
@@ -88,11 +91,20 @@ class _ExperimentsPageState extends State<ExperimentsPage> {
                   Artist artist = Artist.fromJson(data);
                   setState(() {
                     _bodyText = artist.images.toString();
+                    holder = ListItemAdapter(
+                      viewHolder: ListItem(
+                        title: artist.name,
+                        subTitle: 'Artist',
+                        uri: artist.uri,
+                        popularity: artist.popularity,
+                      ),
+                    );
                   });
                 },
               ),
             ],
           ),
+          if (holder != null) holder!,
           Text(
             _bodyText,
             overflow: TextOverflow.fade,

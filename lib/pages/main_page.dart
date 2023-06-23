@@ -36,6 +36,23 @@ class _MainPageState extends State<MainPage> {
 
   @override
   Widget build(BuildContext context) {
+    final appBar = AppBar(
+      title: Text(
+        'Purrify',
+        style: GoogleFonts.shantellSans(
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+      actions: [
+        IconButton(
+          onPressed: () {
+            Navigator.of(context).push(MaterialPageRoute(
+                builder: (context) => const ExperimentsPage()));
+          },
+          icon: const Icon(Icons.code_off),
+        )
+      ],
+    );
     final BottomNavigationBar bottomNavigationBar = BottomNavigationBar(
       backgroundColor: Colors.black,
       selectedItemColor: Colors.purpleAccent,
@@ -60,26 +77,9 @@ class _MainPageState extends State<MainPage> {
         ),
       ],
     );
-
     return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          'Purrify',
-          style: GoogleFonts.shantellSans(
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        actions: [
-          IconButton(
-            onPressed: () {
-              Navigator.of(context).push(MaterialPageRoute(
-                  builder: (context) => const ExperimentsPage()));
-            },
-            icon: const Icon(Icons.code_off),
-          )
-        ],
-      ),
-      body: _currentFragment,
+      appBar: _selectedIndex == 0 ? appBar : null,
+      body: SafeArea(child: _currentFragment),
       bottomNavigationBar: bottomNavigationBar,
     );
   }

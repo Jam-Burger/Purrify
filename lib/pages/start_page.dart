@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:purrify/config.dart';
 import 'package:purrify/pages/main_page.dart';
+import 'package:purrify/utilities/access_token_manager.dart';
 import 'package:purrify/utilities/functions.dart';
 import 'package:spotify_sdk/spotify_sdk.dart';
 
@@ -13,10 +14,14 @@ class StartPage extends StatelessWidget {
       clientId: clientId,
       redirectUrl: redirectUrl,
     ).then((value) {
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (context) => const MainPage()),
-        (route) => false,
-      );
+      AccessTokenManager.getToken().then((value) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => const MainPage()),
+          (route) => false,
+        );
+      }).catchError((e) {
+        log(e.toString());
+      });
     }).catchError((e) {
       log(e.toString());
     });
