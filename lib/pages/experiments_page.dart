@@ -1,6 +1,11 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:http/http.dart';
 import 'package:purrify/config.dart';
+import 'package:purrify/models/artist.dart';
+import 'package:purrify/utilities/access_token_manager.dart';
 import 'package:purrify/utilities/functions.dart';
 import 'package:spotify_sdk/spotify_sdk.dart';
 
@@ -54,9 +59,7 @@ class _ExperimentsPageState extends State<ExperimentsPage> {
               IconButton(
                 icon: const Icon(Icons.generating_tokens),
                 onPressed: () async {
-                  final accessToken = await SpotifySdk.getAccessToken(
-                      clientId: clientId, redirectUrl: redirectUrl);
-                  log(accessToken);
+                  String accessToken = await AccessTokenManager.getToken();
                   Clipboard.setData(ClipboardData(text: accessToken));
                 },
               ),
@@ -72,9 +75,29 @@ class _ExperimentsPageState extends State<ExperimentsPage> {
                   SpotifySdk.pause();
                 },
               ),
+              IconButton(
+                icon: const Icon(Icons.download),
+                onPressed: () async {
+                  String token = await AccessTokenManager.getToken();
+                  Response response = await get(
+                      Uri.parse(
+                          'https://api.spotify.com/v1/artists/0TnOYISbd1XYRBk9myaseg'),
+                      headers: {'Authorization': 'Bearer $token'});
+                  Map<String, dynamic> data = json.decode(response.body);
+
+                  Artist artist = Artist.fromJson(data);
+                  setState(() {
+                    _bodyText = artist.images.toString();
+                  });
+                },
+              ),
             ],
           ),
-          Text(_bodyText),
+          Text(
+            _bodyText,
+            overflow: TextOverflow.fade,
+            maxLines: 20,
+          ),
         ],
       ),
     );
