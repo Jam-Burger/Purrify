@@ -2,8 +2,8 @@ import 'dart:developer' as devtools;
 
 import 'package:flutter/material.dart';
 
-void log(String? message) {
-  devtools.log(message ?? 'null');
+void log(Object? message) {
+  devtools.log(message?.toString() ?? 'null');
 }
 
 void showSnackBar({required context, required message, duration = 2}) {
@@ -14,7 +14,7 @@ void showSnackBar({required context, required message, duration = 2}) {
       vertical: 10,
     ),
     backgroundColor: Colors.grey,
-    content: Text(message),
+    content: Text(message.toString()),
     behavior: SnackBarBehavior.floating,
     duration: Duration(seconds: duration),
   ));
