@@ -1,44 +1,171 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:http/http.dart';
+import 'package:purrify/config.dart';
 import 'package:purrify/utilities/functions.dart';
+import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import 'package:spotify_sdk/models/player_options.dart' as player_options;
+import 'package:spotify_sdk/models/player_state.dart';
 import 'package:spotify_sdk/spotify_sdk.dart';
 
 class PlayerPage extends StatefulWidget {
-  final String uri;
-  final Future<String> lyricsFuture;
-
-  const PlayerPage({super.key, required this.uri, required this.lyricsFuture});
+  const PlayerPage({super.key});
 
   @override
   State<PlayerPage> createState() => _PlayerPageState();
 }
 
 class _PlayerPageState extends State<PlayerPage> {
-  late String _currentUri;
+  late final StreamSubscription<PlayerState> _streamSubscription;
+  String _currentUri = '';
   bool _playing = true;
   bool _isShuffling = false;
+
   player_options.RepeatMode _repeatMode = player_options.RepeatMode.off;
-  String _lyrics = '';
+  Map<int, String> _lyrics = <int, String>{};
+  int _currentLyricsIndex = 0;
+
+  late final ItemScrollController _lyricsScrollController;
+  StreamController<String>? _lyricsStreamController;
+  StreamSubscription<String>? _lyricsStreamSubscription;
+  Timer? _timer;
 
   @override
   void initState() {
     super.initState();
-    _currentUri = widget.uri;
-    SpotifySdk.subscribePlayerState().listen((state) {
-      setState(() {
-        _currentUri = state.track!.uri;
-        _playing = !state.isPaused;
-        _isShuffling = state.playbackOptions.isShuffling;
-        _repeatMode = state.playbackOptions.repeatMode;
-      });
-      log(_repeatMode);
+    SpotifySdk.getPlayerState().then((state) {
+      if (state == null || state.track == null) return;
+      if (mounted) {
+        setState(() {
+          _currentUri = state.track!.uri;
+        });
+      }
+      loadLyrics(state.track!.uri.split(':')[2], state.playbackPosition);
     });
 
-    widget.lyricsFuture.then((value) {
-      setState(() {
-        _lyrics = value;
-      });
+    _streamSubscription = SpotifySdk.subscribePlayerState().listen((state) {
+      if (state.track != null) {
+        if (state.track!.uri != _currentUri) {
+          if (mounted) {
+            setState(() {
+              _lyrics = {};
+              _currentUri = state.track!.uri;
+            });
+          }
+
+          loadLyrics(state.track!.uri.split(':')[2], state.playbackPosition);
+        }
+      }
+      if (mounted) {
+        setState(() {
+          _playing = !state.isPaused;
+          _isShuffling = state.playbackOptions.isShuffling;
+          _repeatMode = state.playbackOptions.repeatMode;
+        });
+      }
+      log(_currentUri);
     });
+
+    _lyricsScrollController = ItemScrollController();
+  }
+
+  @override
+  void dispose() {
+    _streamSubscription.cancel();
+    _lyricsStreamSubscription?.cancel();
+    _timer?.cancel();
+    _lyricsStreamController?.close();
+    super.dispose();
+  }
+
+  void loadLyrics(String trackId, int trackPosition) async {
+    _lyricsStreamController?.close();
+    _lyricsStreamSubscription?.cancel();
+    _timer?.cancel();
+
+    final old = DateTime.now().millisecondsSinceEpoch;
+
+    String lyricsUri = '$lyricsApiUrl/?trackid=$trackId'; //&format=lrc
+    final response = await get(Uri.parse(lyricsUri));
+    Map<String, dynamic> data = json.decode(response.body);
+
+    if (data['error']) {
+      log('error while loading lyrics');
+      return;
+    }
+    final lyrics = <int, String>{};
+    for (final e in (data['lines'])) {
+      lyrics[int.parse(e['startTimeMs'])] = e['words'];
+    }
+    if (mounted) {
+      setState(() {
+        _lyrics = lyrics;
+      });
+    }
+
+    int startTime = DateTime.now().millisecondsSinceEpoch;
+    int lyricsLoadGap = startTime - old;
+    int currentTrackPosition = trackPosition + lyricsLoadGap;
+
+    setState(() {
+      _currentLyricsIndex = _lyrics.keys
+          .toList()
+          .indexWhere((time) => time >= currentTrackPosition);
+    });
+    if (_currentLyricsIndex == -1) {
+      _lyricsScrollController.jumpTo(index: 0, alignment: .6);
+    } else {
+      _lyricsScrollController.jumpTo(index: _currentLyricsIndex, alignment: .5);
+    }
+
+    synchronizeLyrics(currentTrackPosition);
+  }
+
+  void synchronizeLyrics(int currentTrackPosition) {
+    int startTime = DateTime.now().millisecondsSinceEpoch;
+
+    _lyricsStreamController = StreamController();
+    _lyricsStreamSubscription = _lyricsStreamController?.stream.listen((event) {
+      log(event);
+      scrollToCurrentLyrics();
+    });
+
+    _timer = Timer.periodic(const Duration(milliseconds: 10), (timer) {
+      int elapsedTime = DateTime.now().millisecondsSinceEpoch -
+          startTime +
+          currentTrackPosition;
+
+      if (_currentLyricsIndex >= _lyrics.length) {
+        _lyricsStreamController?.close();
+        _lyricsStreamSubscription?.cancel();
+        _timer?.cancel();
+        setState(() {
+          _lyrics = {};
+        });
+        return;
+      }
+
+      if (elapsedTime >= _lyrics.keys.elementAt(_currentLyricsIndex)) {
+        _lyricsStreamController
+            ?.add(_lyrics.values.elementAt(_currentLyricsIndex));
+        setState(() {
+          _currentLyricsIndex++;
+        });
+      }
+    });
+  }
+
+  void scrollToCurrentLyrics() {
+    if (_currentLyricsIndex >= 0) {
+      _lyricsScrollController.scrollTo(
+        index: _currentLyricsIndex,
+        duration: const Duration(milliseconds: 500),
+        curve: Curves.easeInOutCubic,
+        alignment: 0.5,
+      );
+    }
   }
 
   @override
@@ -48,9 +175,33 @@ class _PlayerPageState extends State<PlayerPage> {
         child: Container(
           color: Colors.teal,
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              Expanded(child: ListView(children: [Text(_lyrics)])),
+              Expanded(
+                child: Center(
+                  child: ScrollablePositionedList.builder(
+                    itemScrollController: _lyricsScrollController,
+                    padding: const EdgeInsets.symmetric(vertical: 500),
+                    itemCount: _lyrics.length,
+                    itemBuilder: (context, index) {
+                      if (index <= -1) return Container();
+                      String text = _lyrics.values
+                          .elementAt(index)
+                          .replaceAll(' (', '\n(');
+                      return Container(
+                        color: index % 2 == 0 ? Colors.black12 : Colors.black26,
+                        child: Text(
+                          text,
+                          style: TextStyle(
+                            fontSize:
+                                index == _currentLyricsIndex - 1 ? 30 : 20,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
               ButtonBar(
                 alignment: MainAxisAlignment.center,
                 children: [

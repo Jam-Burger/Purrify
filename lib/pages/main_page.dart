@@ -4,6 +4,7 @@ import 'package:purrify/pages/experiments_page.dart';
 import 'package:purrify/pages/fragments/home_fragment.dart';
 import 'package:purrify/pages/fragments/library_fragment.dart';
 import 'package:purrify/pages/fragments/search_fragment.dart';
+import 'package:purrify/pages/player_page.dart';
 
 class MainPage extends StatefulWidget {
   const MainPage({super.key});
@@ -50,6 +51,13 @@ class _MainPageState extends State<MainPage> {
                 builder: (context) => const ExperimentsPage()));
           },
           icon: const Icon(Icons.code_off),
+        ),
+        IconButton(
+          onPressed: () {
+            Navigator.of(context).push(
+                MaterialPageRoute(builder: (context) => const PlayerPage()));
+          },
+          icon: const Icon(Icons.play_circle),
         )
       ],
     );

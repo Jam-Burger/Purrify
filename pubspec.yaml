@@ -13,6 +13,7 @@ dependencies:
   google_fonts: ^5.0.0
   http: ^1.0.0
   spotify_sdk: ^2.3.1
+  scrollable_positioned_list: ^0.3.8
 
 dev_dependencies:
   flutter_test:
