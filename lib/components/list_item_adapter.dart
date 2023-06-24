@@ -13,9 +13,10 @@ class ListItemAdapter extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: () async {
-        SpotifySdk.play(spotifyUri: viewHolder.uri);
-        Navigator.push(context,
-            MaterialPageRoute(builder: (context) => const PlayerPage()));
+        SpotifySdk.play(spotifyUri: viewHolder.uri).then((value) {
+          Navigator.push(context,
+              MaterialPageRoute(builder: (context) => const PlayerPage()));
+        });
       },
       child: Padding(
         padding: const EdgeInsets.all(8.0),

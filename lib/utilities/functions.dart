@@ -6,6 +6,11 @@ void log(Object? message) {
   devtools.log(message?.toString() ?? 'null');
 }
 
+String millisToMinSec(int millis) {
+  Duration d = Duration(milliseconds: millis);
+  return d.toString().substring(2, 7);
+}
+
 void showSnackBar({required context, required message, duration = 2}) {
   ScaffoldMessenger.of(context).showSnackBar(SnackBar(
     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),

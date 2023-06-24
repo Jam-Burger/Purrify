@@ -18,19 +18,24 @@ class PlayerPage extends StatefulWidget {
 }
 
 class _PlayerPageState extends State<PlayerPage> {
-  late final StreamSubscription<PlayerState> _streamSubscription;
+  StreamSubscription<PlayerState>? _streamSubscription;
   String _currentUri = '';
-  bool _playing = true;
+  bool _isPlaying = false;
   bool _isShuffling = false;
+  static const refreshDelta = 10;
+  static const trackTimeOffset = 40;
 
   player_options.RepeatMode _repeatMode = player_options.RepeatMode.off;
   Map<int, String> _lyrics = <int, String>{};
   int _currentLyricsIndex = 0;
+  late int _currentTrackTime;
+  late int _currentTrackLength;
 
   late final ItemScrollController _lyricsScrollController;
   StreamController<String>? _lyricsStreamController;
   StreamSubscription<String>? _lyricsStreamSubscription;
   Timer? _timer;
+  late int lastTrackUpdateTime;
 
   @override
   void initState() {
@@ -40,12 +45,31 @@ class _PlayerPageState extends State<PlayerPage> {
       if (mounted) {
         setState(() {
           _currentUri = state.track!.uri;
+          _isShuffling = state.playbackOptions.isShuffling;
+          _repeatMode = state.playbackOptions.repeatMode;
+          _isPlaying = !state.isPaused;
+          _currentTrackTime = state.playbackPosition + trackTimeOffset;
+          _currentTrackLength = state.track!.duration;
+          lastTrackUpdateTime = DateTime.now().millisecondsSinceEpoch;
         });
       }
-      loadLyrics(state.track!.uri.split(':')[2], state.playbackPosition);
+      loadLyrics(state.track!.uri.split(':')[2]);
+      synchronizeLyrics();
     });
 
     _streamSubscription = SpotifySdk.subscribePlayerState().listen((state) {
+      setState(() {
+        _currentTrackTime = state.playbackPosition + trackTimeOffset;
+        _currentTrackLength = state.track!.duration;
+        lastTrackUpdateTime = DateTime.now().millisecondsSinceEpoch;
+        if (_lyrics.isNotEmpty) {
+          _currentLyricsIndex = _lyrics.keys
+              .toList()
+              .indexWhere((time) => time >= _currentTrackTime);
+        }
+        scrollToCurrentLyrics();
+      });
+
       if (state.track != null) {
         if (state.track!.uri != _currentUri) {
           if (mounted) {
@@ -54,18 +78,18 @@ class _PlayerPageState extends State<PlayerPage> {
               _currentUri = state.track!.uri;
             });
           }
-
-          loadLyrics(state.track!.uri.split(':')[2], state.playbackPosition);
+          loadLyrics(state.track!.uri.split(':')[2]);
+          synchronizeLyrics();
         }
       }
       if (mounted) {
         setState(() {
-          _playing = !state.isPaused;
+          _isPlaying = !state.isPaused;
           _isShuffling = state.playbackOptions.isShuffling;
           _repeatMode = state.playbackOptions.repeatMode;
         });
       }
-      log(_currentUri);
+      log('state changed $_currentUri');
     });
 
     _lyricsScrollController = ItemScrollController();
@@ -73,20 +97,14 @@ class _PlayerPageState extends State<PlayerPage> {
 
   @override
   void dispose() {
-    _streamSubscription.cancel();
+    _streamSubscription?.cancel();
     _lyricsStreamSubscription?.cancel();
     _timer?.cancel();
     _lyricsStreamController?.close();
     super.dispose();
   }
 
-  void loadLyrics(String trackId, int trackPosition) async {
-    _lyricsStreamController?.close();
-    _lyricsStreamSubscription?.cancel();
-    _timer?.cancel();
-
-    final old = DateTime.now().millisecondsSinceEpoch;
-
+  void loadLyrics(String trackId) async {
     String lyricsUri = '$lyricsApiUrl/?trackid=$trackId'; //&format=lrc
     final response = await get(Uri.parse(lyricsUri));
     Map<String, dynamic> data = json.decode(response.body);
@@ -105,26 +123,21 @@ class _PlayerPageState extends State<PlayerPage> {
       });
     }
 
-    int startTime = DateTime.now().millisecondsSinceEpoch;
-    int lyricsLoadGap = startTime - old;
-    int currentTrackPosition = trackPosition + lyricsLoadGap;
-
     setState(() {
-      _currentLyricsIndex = _lyrics.keys
-          .toList()
-          .indexWhere((time) => time >= currentTrackPosition);
+      _currentLyricsIndex =
+          _lyrics.keys.toList().indexWhere((time) => time >= _currentTrackTime);
     });
     if (_currentLyricsIndex == -1) {
       _lyricsScrollController.jumpTo(index: 0, alignment: .6);
     } else {
       _lyricsScrollController.jumpTo(index: _currentLyricsIndex, alignment: .5);
     }
-
-    synchronizeLyrics(currentTrackPosition);
   }
 
-  void synchronizeLyrics(int currentTrackPosition) {
-    int startTime = DateTime.now().millisecondsSinceEpoch;
+  void synchronizeLyrics() {
+    _lyricsStreamController?.close();
+    _lyricsStreamSubscription?.cancel();
+    _timer?.cancel();
 
     _lyricsStreamController = StreamController();
     _lyricsStreamSubscription = _lyricsStreamController?.stream.listen((event) {
@@ -132,22 +145,31 @@ class _PlayerPageState extends State<PlayerPage> {
       scrollToCurrentLyrics();
     });
 
-    _timer = Timer.periodic(const Duration(milliseconds: 10), (timer) {
-      int elapsedTime = DateTime.now().millisecondsSinceEpoch -
-          startTime +
-          currentTrackPosition;
+    _timer =
+        Timer.periodic(const Duration(milliseconds: refreshDelta), (timer) {
+      int currentTime = DateTime.now().millisecondsSinceEpoch;
+      int timeDelta = currentTime - lastTrackUpdateTime;
+      lastTrackUpdateTime = currentTime;
 
-      if (_currentLyricsIndex >= _lyrics.length) {
+      if (_currentTrackTime + timeDelta >= _currentTrackLength) {
+        _timer?.cancel();
+        return;
+      }
+      if (_isPlaying) {
+        setState(() {
+          _currentTrackTime += timeDelta;
+        });
+      }
+
+      if (_lyrics.isEmpty) return;
+      if (_currentLyricsIndex >= _lyrics.length ||
+          (_lyricsStreamController?.isClosed ?? false)) {
         _lyricsStreamController?.close();
         _lyricsStreamSubscription?.cancel();
-        _timer?.cancel();
-        setState(() {
-          _lyrics = {};
-        });
         return;
       }
 
-      if (elapsedTime >= _lyrics.keys.elementAt(_currentLyricsIndex)) {
+      if (_currentTrackTime >= _lyrics.keys.elementAt(_currentLyricsIndex)) {
         _lyricsStreamController
             ?.add(_lyrics.values.elementAt(_currentLyricsIndex));
         setState(() {
@@ -173,109 +195,165 @@ class _PlayerPageState extends State<PlayerPage> {
     return Scaffold(
       body: SafeArea(
         child: Container(
-          color: Colors.teal,
+          color: Colors.greenAccent,
           child: Column(
             children: [
               Expanded(
-                child: Center(
-                  child: ScrollablePositionedList.builder(
-                    itemScrollController: _lyricsScrollController,
-                    padding: const EdgeInsets.symmetric(vertical: 500),
-                    itemCount: _lyrics.length,
-                    itemBuilder: (context, index) {
-                      if (index <= -1) return Container();
-                      String text = _lyrics.values
-                          .elementAt(index)
-                          .replaceAll(' (', '\n(');
-                      return Container(
+                child: ScrollablePositionedList.builder(
+                  itemScrollController: _lyricsScrollController,
+                  padding: const EdgeInsets.symmetric(vertical: 500),
+                  itemCount: _lyrics.length,
+                  itemBuilder: (context, index) {
+                    if (index <= -1) return Container();
+                    String text = _lyrics.values.elementAt(index);
+                    // text.replaceAll(' (', '\n(');
+                    return GestureDetector(
+                      onTap: () {
+                        int newTime = _lyrics.keys.elementAt(index);
+                        SpotifySdk.seekTo(positionedMilliseconds: newTime);
+                        setState(() {
+                          _currentTrackTime = newTime;
+                          _currentLyricsIndex = index;
+                        });
+                        scrollToCurrentLyrics();
+                      },
+                      child: Container(
                         color: index % 2 == 0 ? Colors.black12 : Colors.black26,
                         child: Text(
                           text,
-                          style: TextStyle(
-                            fontSize:
-                                index == _currentLyricsIndex - 1 ? 30 : 20,
-                          ),
+                          style: index == _currentLyricsIndex - 1
+                              ? const TextStyle(
+                                  fontSize: 30,
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w500,
+                                )
+                              : const TextStyle(
+                                  fontSize: 20,
+                                  color: Colors.black87,
+                                ),
                           textAlign: TextAlign.center,
                         ),
-                      );
-                    },
-                  ),
+                      ),
+                    );
+                  },
                 ),
               ),
-              ButtonBar(
-                alignment: MainAxisAlignment.center,
-                children: [
-                  IconButton(
-                    onPressed: () {
-                      setState(() {
-                        _isShuffling = !_isShuffling;
-                      });
-                      SpotifySdk.toggleShuffle();
-                    },
-                    icon: _isShuffling
-                        ? const Icon(Icons.shuffle_on_outlined)
-                        : const Icon(Icons.shuffle),
-                  ),
-                  IconButton(
-                    onPressed: () {
-                      SpotifySdk.skipPrevious();
-                    },
-                    icon: const Icon(Icons.skip_previous),
-                  ),
-                  IconButton(
-                    onPressed: () async {
-                      if (_playing) {
-                        SpotifySdk.pause();
-                      } else {
-                        SpotifySdk.resume();
-                      }
-                      setState(() {
-                        _playing = !_playing;
-                      });
-                    },
-                    icon: _playing
-                        ? const Icon(Icons.pause)
-                        : const Icon(Icons.play_arrow),
-                  ),
-                  IconButton(
-                    onPressed: () {
-                      SpotifySdk.skipNext();
-                    },
-                    icon: const Icon(Icons.skip_next),
-                  ),
-                  IconButton(
-                    onPressed: () {
-                      switch (_repeatMode) {
-                        case player_options.RepeatMode.off:
-                          SpotifySdk.setRepeatMode(
-                              repeatMode: RepeatMode.context);
-                          setState(() {
-                            _repeatMode = player_options.RepeatMode.context;
-                          });
-                          break;
-                        case player_options.RepeatMode.context:
-                          SpotifySdk.setRepeatMode(
-                              repeatMode: RepeatMode.track);
-                          setState(() {
-                            _repeatMode = player_options.RepeatMode.track;
-                          });
-                          break;
-                        case player_options.RepeatMode.track:
-                          SpotifySdk.setRepeatMode(repeatMode: RepeatMode.off);
-                          setState(() {
-                            _repeatMode = player_options.RepeatMode.off;
-                          });
-                          break;
-                      }
-                    },
-                    icon: _repeatMode == player_options.RepeatMode.off
-                        ? const Icon(Icons.repeat)
-                        : _repeatMode == player_options.RepeatMode.context
-                            ? const Icon(Icons.repeat_on_outlined)
-                            : const Icon(Icons.repeat_one_on_outlined),
-                  ),
-                ],
-              )
+              Container(
+                color: Colors.black,
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Column(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 2),
+                      child: Row(
+                        children: [
+                          Text(millisToMinSec(_currentTrackTime)),
+                          Expanded(
+                            child: Slider(
+                              value: _currentTrackTime.toDouble(),
+                              min: 0,
+                              max: _currentTrackLength.toDouble(),
+                              label: 'trackTime',
+                              thumbColor: Colors.purple,
+                              activeColor: Colors.purpleAccent,
+                              onChangeEnd: (value) {
+                                SpotifySdk.seekTo(
+                                    positionedMilliseconds: value.toInt());
+                                setState(() {
+                                  _currentTrackTime = value.toInt();
+                                });
+                              },
+                              onChanged: (double value) {
+                                setState(() {
+                                  _currentTrackTime = value.toInt();
+                                });
+                              },
+                            ),
+                          ),
+                          Text(millisToMinSec(_currentTrackLength)),
+                        ],
+                      ),
+                    ),
+                    ButtonBar(
+                      alignment: MainAxisAlignment.center,
+                      children: [
+                        IconButton(
+                          onPressed: () {
+                            setState(() {
+                              _isShuffling = !_isShuffling;
+                            });
+                            SpotifySdk.toggleShuffle();
+                          },
+                          icon: _isShuffling
+                              ? const Icon(Icons.shuffle_on_outlined)
+                              : const Icon(Icons.shuffle),
+                        ),
+                        IconButton(
+                          onPressed: () {
+                            SpotifySdk.skipPrevious();
+                          },
+                          icon: const Icon(Icons.skip_previous),
+                        ),
+                        IconButton(
+                          onPressed: () async {
+                            if (_isPlaying) {
+                              SpotifySdk.pause();
+                            } else {
+                              SpotifySdk.resume();
+                            }
+                            setState(() {
+                              _isPlaying = !_isPlaying;
+                            });
+                          },
+                          icon: _isPlaying
+                              ? const Icon(Icons.pause)
+                              : const Icon(Icons.play_arrow),
+                        ),
+                        IconButton(
+                          onPressed: () {
+                            SpotifySdk.skipNext();
+                          },
+                          icon: const Icon(Icons.skip_next),
+                        ),
+                        IconButton(
+                          onPressed: () {
+                            switch (_repeatMode) {
+                              case player_options.RepeatMode.off:
+                                SpotifySdk.setRepeatMode(
+                                    repeatMode: RepeatMode.context);
+                                setState(() {
+                                  _repeatMode =
+                                      player_options.RepeatMode.context;
+                                });
+                                break;
+                              case player_options.RepeatMode.context:
+                                SpotifySdk.setRepeatMode(
+                                    repeatMode: RepeatMode.track);
+                                setState(() {
+                                  _repeatMode = player_options.RepeatMode.track;
+                                });
+                                break;
+                              case player_options.RepeatMode.track:
+                                SpotifySdk.setRepeatMode(
+                                    repeatMode: RepeatMode.off);
+                                setState(() {
+                                  _repeatMode = player_options.RepeatMode.off;
+                                });
+                                break;
+                            }
+                          },
+                          icon: _repeatMode == player_options.RepeatMode.off
+                              ? const Icon(Icons.repeat)
+                              : _repeatMode == player_options.RepeatMode.context
+                                  ? const Icon(Icons.repeat_on_outlined)
+                                  : const Icon(Icons.repeat_one_on_outlined),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
